@@ -5,6 +5,7 @@
 
   Copyright (c) 2012-19 The Processing Foundation
   Copyright (c) 2004-12 Ben Fry and Casey Reas
+  GStreamer implementation ported from GSVideo library by Andres Colubri
   The previous version of this code was developed by Hernando Barragan
 
   This library is free software; you can redistribute it and/or
@@ -44,49 +45,44 @@ import org.freedesktop.gstreamer.event.SeekType;
 
 
 /**
-   * ( begin auto-generated from Movie.xml )
-   *
-   * Datatype for storing and playing movies in Apple's QuickTime format.
-   * Movies must be located in the sketch's data directory or an accessible
-   * place on the network to load without an error.
-   *
-   * ( end auto-generated )
+ * Datatype for storing and playing movies. Movies must be located in the sketch's data folder 
+ * or an accessible place on the network to load without an error.
  *
- * @webref video
+ * @webref movie
+ * @webBrief Datatype for storing and playing movies.
  * @usage application
  */
 public class Movie extends PImage implements PConstants {
   public static String[] supportedProtocols = { "http" };
 
-  protected int nativeWidth;
-  protected int nativeHeight;
-  protected float nativeFrameRate;    // the file's native fps
-  public float frameRate;             // the current playback fps
-  protected float rate;               // speed multiplier (1.0: frameRate = nativeFrameRate)
-
   public String filename;
   public PlayBin playbin;
+  
+  // The source resolution and framerate of the file
+  public int sourceWidth;
+  public int sourceHeight;
+  public float sourceFrameRate;
+  
+  public float frameRate;             // the current playback fps  
+  protected float rate;               // speed multiplier (1.0: frameRate = nativeFrameRate)
 
+  protected float volume;
+  
   protected boolean playing = false;
   protected boolean paused = false;
   protected boolean repeat = false;
-
-  protected int bufWidth;
-  protected int bufHeight;
-  protected float volume;
 
   protected Method movieEventMethod;
   protected Object eventHandler;
 
   protected boolean available;
-  protected boolean sinkReady;
+  protected boolean ready;
   protected boolean newFrame;
 
   protected AppSink rgbSink = null;
   protected int[] copyPixels = null;
 
   protected boolean firstFrame = true;
-//  protected boolean seeking = false;
 
   protected boolean useBufferSink = false;
   protected boolean outdatedPixels = true;
@@ -102,7 +98,7 @@ public class Movie extends PImage implements PConstants {
   
 
   /**
-   * Creates an instance of GSMovie loading the movie from filename.
+   * Creates an instance of Movie loading the movie from filename.
    *
    * @param parent PApplet
    * @param filename String
@@ -120,14 +116,13 @@ public class Movie extends PImage implements PConstants {
    */
   public void dispose() {
     if (playbin != null) {
-//      try {
-//        if (playbin.isPlaying()) {
-//          playbin.stop();
-//          playbin.getState();
-//        }
-//      } catch (Exception e) {
-//        e.printStackTrace();
-//      }
+      try {
+        if (playbin.isPlaying()) {
+          playbin.stop();
+          playbin.getState();
+        }
+      } catch (Exception e) {
+      }
 
       pixels = null;
 
@@ -141,7 +136,7 @@ public class Movie extends PImage implements PConstants {
       
       parent.g.removeCache(this);
       parent.unregisterMethod("dispose", this);
-      parent.unregisterMethod("post", this);      
+      parent.unregisterMethod("post", this);
     }
   }
 
@@ -159,21 +154,16 @@ public class Movie extends PImage implements PConstants {
 
 
   /**
-   * ( begin auto-generated from Movie_frameRate.xml )
-   *
    * Sets how often frames are read from the movie. Setting the <b>fps</b>
    * parameter to 4, for example, will cause 4 frames to be read per second.
    *
-   * ( end auto-generated )
-   *
    * @webref movie
+   * @webBrief Sets how often frames are read from the movie.
    * @usage web_application
    * @param ifps speed of the movie in frames per second
    * @brief Sets the target frame rate
    */
   public void frameRate(float ifps) {
-//    if (seeking) return;
-
     // We calculate the target ratio in the case both the
     // current and target framerates are valid (greater than
     // zero), otherwise we leave it as 1.
@@ -189,66 +179,20 @@ public class Movie extends PImage implements PConstants {
       stop = t;
     }
     
-    Gst.invokeLater(new Runnable() {
-      public void run() {
-        boolean res = playbin.seek(rate * f, Format.TIME, EnumSet.of(SeekFlags.FLUSH, SeekFlags.ACCURATE), SeekType.SET, start, SeekType.SET, stop);
-        if (!res) {
-          PGraphics.showWarning("Seek operation failed.");
-        }        
-      }
-    });
+    seek(rate * f, start, stop);
     
     frameRate = ifps;
-    
-    
-    /*
-    if (playing) {
-      playbin.pause();
-      playbin.getState();
-    }
-
-    long t = playbin.queryPosition(TimeUnit.NANOSECONDS);
-
-    boolean res;
-    long start, stop;
-    if (rate > 0) {
-      start = t;
-      stop = -1;
-    } else {
-      start = 0;
-      stop = t;
-    }
-
-    res = playbin.seek(rate * f, Format.TIME, EnumSet.of(SeekFlags.FLUSH, SeekFlags.ACCURATE), SeekType.SET, start, SeekType.SET, stop);
-    
-    
-    
-    playbin.getState();
-
-    if (!res) {
-      PGraphics.showWarning("Seek operation failed.");
-    }
-
-    if (playing) {
-      playbin.play();
-    }
-
-    frameRate = ifps;
-    */
   }
-
+  
 
   /**
-   * ( begin auto-generated from Movie_speed.xml )
-   *
    * Sets the relative playback speed of the movie. The <b>rate</b>
    * parameters sets the speed where 2.0 will play the movie twice as fast,
    * 0.5 will play at half the speed, and -1 will play the movie in normal
    * speed in reverse.
    *
-   * ( end auto-generated )
-   *
    * @webref movie
+   * @webBrief Sets the relative playback speed of the movie.
    * @usage web_application
    * @param irate speed multiplier for movie playback
    * @brief Sets the relative playback speed
@@ -265,14 +209,11 @@ public class Movie extends PImage implements PConstants {
 
 
   /**
-   * ( begin auto-generated from Movie_duration.xml )
-   *
    * Returns the length of the movie in seconds. If the movie is 1 minute and
    * 20 seconds long the value returned will be 80.0.
    *
-   * ( end auto-generated )
-   *
    * @webref movie
+   * @webBrief Returns the length of the movie in seconds.
    * @usage web_application
    * @brief Returns length of movie in seconds
    */
@@ -283,14 +224,11 @@ public class Movie extends PImage implements PConstants {
 
 
   /**
-   * ( begin auto-generated from Movie_time.xml )
-   *
    * Returns the location of the playback head in seconds. For example, if
    * the movie has been playing for 4 seconds, the number 4.0 will be returned.
    *
-   * ( end auto-generated )
-   *
    * @webref movie
+   * @webBrief Returns the location of the playback head in seconds.
    * @usage web_application
    * @brief Returns location of playback head in units of seconds
    */
@@ -301,54 +239,36 @@ public class Movie extends PImage implements PConstants {
 
 
   /**
-   * ( begin auto-generated from Movie_jump.xml )
-   *
    * Jumps to a specific location within a movie. The parameter <b>where</b>
    * is in terms of seconds. For example, if the movie is 12.2 seconds long,
    * calling <b>jump(6.1)</b> would go to the middle of the movie.
    *
-   * ( end auto-generated )
-   *
    * @webref movie
+   * @webBrief Jumps to a specific location within a movie.
    * @usage web_application
    * @param where position to jump to specified in seconds
    * @brief Jumps to a specific location
    */
   public void jump(float where) {
-//    if (seeking) return;
-
-    if (!sinkReady) {
-      initSink();
-    }
+    setReady();
 
     // Round the time to a multiple of the source framerate, in
     // order to eliminate stutter. Suggested by Daniel Shiffman
-    if (nativeFrameRate != -1) {
-      int frame = (int)(where * nativeFrameRate);
-      where = frame / nativeFrameRate;
+    if (sourceFrameRate != -1) {
+      int frame = (int)(where * sourceFrameRate);
+      where = frame / sourceFrameRate;
     }
 
     long pos = Video.secToNanoLong(where);
-
-    Gst.invokeLater(new Runnable() {
-      public void run() {
-        boolean res = playbin.seek(rate, Format.TIME, EnumSet.of(SeekFlags.FLUSH, SeekFlags.ACCURATE), SeekType.SET, pos, SeekType.NONE, -1);
-        if (!res) {
-          PGraphics.showWarning("Seek operation failed.");
-        }        
-      }
-    });
+    seek(rate, pos, -1);
   }
 
 
   /**
-   * ( begin auto-generated from Movie_available.xml )
-   *
    * Returns "true" when a new movie frame is available to read.
    *
-   * ( end auto-generated )
-   *
    * @webref movie
+   * @webBrief Returns "true" when a new movie frame is available to read.
    * @usage web_application
    * @brief Returns "true" when a new movie frame is available to read.
    */
@@ -358,155 +278,106 @@ public class Movie extends PImage implements PConstants {
 
 
   /**
-   * ( begin auto-generated from Movie_play.xml )
-   *
    * Plays a movie one time and stops at the last frame.
    *
-   * ( end auto-generated )
-   *
    * @webref movie
+   * @webBrief Plays a movie one time and stops at the last frame.
    * @usage web_application
    * @brief Plays movie one time and stops at the last frame
    */
   public void play() {
-//    if (seeking) return;
-
-    if (!sinkReady) {
-      initSink();
-    }
-
+    setReady();
+    
+    playbin.play();
+    playbin.getState();    
+    
     playing = true;
     paused = false;
-    playbin.play();
-    playbin.getState();
   }
 
 
   /**
-   * ( begin auto-generated from Movie_loop.xml )
-   *
    * Plays a movie continuously, restarting it when it's over.
    *
-   * ( end auto-generated )
-   *
    * @webref movie
+   * @webBrief Plays a movie continuously, restarting it when it's over.
    * @usage web_application
    * @brief Plays a movie continuously, restarting it when it's over.
    */
   public void loop() {
-//    if (seeking) return;
-
     repeat = true;
     play();
   }
 
 
   /**
-   * ( begin auto-generated from Movie_noLoop.xml )
-   *
    * If a movie is looping, calling noLoop() will cause it to play until the
    * end and then stop on the last frame.
    *
-   * ( end auto-generated )
-   *
    * @webref movie
+   * @webBrief If a movie is looping, this will cause it to play until the
+   * end and then stop on the last frame.
    * @usage web_application
    * @brief Stops the movie from looping
    */
   public void noLoop() {
-//    if (seeking) return;
-
-    if (!sinkReady) {
-      initSink();
-    }
+    setReady();
 
     repeat = false;
   }
 
 
   /**
-   * ( begin auto-generated from Movie_pause.xml )
-   *
    * Pauses a movie during playback. If a movie is started again with play(),
    * it will continue from where it was paused.
    *
-   * ( end auto-generated )
-   *
    * @webref movie
+   * @webBrief Pauses a movie during playback.
    * @usage web_application
    * @brief Pauses the movie
    */
   public void pause() {
-//    if (seeking) return;
+    setReady();
 
-    if (!sinkReady) {
-      initSink();
-    }
+    playbin.pause();
+    playbin.getState();    
 
     playing = false;
-    paused = true;
-    playbin.pause();
-    playbin.getState();
+    paused = true;    
   }
 
 
   /**
-   * ( begin auto-generated from Movie_stop.xml )
-   *
    * Stops a movie from continuing. The playback returns to the beginning so
    * when a movie is played, it will begin from the beginning.
    *
-   * ( end auto-generated )
-   *
    * @webref movie
+   * @webBrief Stops a movie from continuing.
    * @usage web_application
    * @brief Stops the movie
    */
   public void stop() {
-//    if (seeking) return;
+    setReady();
 
-    if (!sinkReady) {
-      initSink();
-    }
-
-    if (playing) {
-      jump(0);
-      playing = false;
-    }
-    paused = false;
     playbin.stop();
-    playbin.getState();
+    playbin.getState();    
+    
+    playing = false;
+    paused = false;    
   }
 
 
   /**
-   * ( begin auto-generated from Movie_read.xml )
-   *
    * Reads the current frame of the movie.
    *
-   * ( end auto-generated )
-   *
    * @webref movie
+   * @webBrief Reads the current frame of the movie.
    * @usage web_application
    * @brief Reads the current frame
    */
   public synchronized void read() {
-//    if (frameRate < 0) {
-//      // Framerate not set yet, so we obtain from stream,
-//      // which is already playing since we are in read().
-//      frameRate = getSourceFrameRate();
-//    }
-//    if (volume < 0) {
-//      // Idem for volume
-//      volume = (float)playbin.getVolume();
-//    }
-//  
-//    if (copyPixels == null) {
-//      return;
-//    }
-
     if (firstFrame) {
-      super.init(bufWidth, bufHeight, RGB, 1);
+      super.init(sourceWidth, sourceHeight, RGB, 1);
       firstFrame = false;
     }
 
@@ -539,37 +410,22 @@ public class Movie extends PImage implements PConstants {
    */
   public void volume(float v) {
     if (playing && PApplet.abs(volume - v) > 0.001f) {
+
       playbin.setVolume(v);
+      playbin.getState();      
+      
       volume = v;
     }
   }
 
-
+  
+  /**
+   * Loads the pixel data for the image into its <b>pixels[]</b> array.
+   */
+  @Override
   public synchronized void loadPixels() {
-    super.loadPixels();
-    
+    super.loadPixels();    
     if (useBufferSink && bufferSink != null) {
-      /*
-      if (natBuffer != null) {
-        // This means that the OpenGL texture hasn't been created so far (the
-        // video frame not drawn using image()), but the user wants to use the
-        // pixel array, which we can just get from natBuffer.
-        IntBuffer buf = natBuffer.getByteBuffer().asIntBuffer();
-        buf.rewind();
-        buf.get(pixels);
-        Video.convertToARGB(pixels, width, height);        
-      } else if (sinkGetMethod != null) {
-        try {
-          // sinkGetMethod will copy the latest buffer to the pixels array,
-          // and the pixels will be copied to the texture when the OpenGL
-          // renderer needs to draw it.
-          sinkGetMethod.invoke(bufferSink, new Object[] { pixels });
-        } catch (Exception e) {
-          e.printStackTrace();
-        }        
-      }
-      */
-      
       try {
         // sinkGetMethod will copy the latest buffer to the pixels array,
         // and the pixels will be copied to the texture when the OpenGL
@@ -577,25 +433,53 @@ public class Movie extends PImage implements PConstants {
         sinkGetMethod.invoke(bufferSink, new Object[] { pixels });
       } catch (Exception e) {
         e.printStackTrace();
-      }    
-      
+      }      
       outdatedPixels = false;
     }
   }
   
   
+  /**
+   * Reads the color of any pixel or grabs a section of an image.
+   */
+  @Override
   public int get(int x, int y) {
     if (outdatedPixels) loadPixels();
     return super.get(x, y);
   }
-  
-  
+
+
+  @Override
   protected void getImpl(int sourceX, int sourceY,
                          int sourceWidth, int sourceHeight,
                          PImage target, int targetX, int targetY) {
     if (outdatedPixels) loadPixels();
     super.getImpl(sourceX, sourceY, sourceWidth, sourceHeight,
-                  target, targetX, targetY);
+    target, targetX, targetY);
+  }
+  
+  
+  /**
+   * Check if this movie object is currently playing.
+   */
+  public boolean isPlaying() {
+    return playing;
+  }
+
+
+  /**
+   * Check if this movie object is currently paused.
+   */
+  public boolean isPaused() {
+    return paused;
+  }
+
+
+  /**
+   * Check if this movie object is currently looping.
+   */
+  public boolean isLooping() {
+    return repeat;
   }
   
   
@@ -606,16 +490,16 @@ public class Movie extends PImage implements PConstants {
 
   protected void initGStreamer(PApplet parent, String filename) {
     this.parent = parent;
+
+    Video.init();    
     playbin = null;
-
+    
     File file;
-
-    Video.init();
-
-    // first check to see if this can be read locally from a file.
-    try {
+    
+    // First check to see if this can be read locally from a file.
+    try {      
       try {
-        // first try a local file using the dataPath. usually this will
+        // Try a local file using the dataPath. usually this will
         // work ok, but sometimes the dataPath is inside a jar file,
         // which is less fun, so this will crap out.
         file = new File(parent.dataPath(filename));
@@ -624,12 +508,10 @@ public class Movie extends PImage implements PConstants {
           playbin.setInputFile(file);
         }
       } catch (Exception e) {
-        // XXX: we want to see exceptions here such as
-        // "java.lang.IllegalArgumentException: No such Gstreamer factory: playbin"
-        // just hide the file-not-found ones
+        e.printStackTrace();
       }
 
-      // read from a file just hanging out in the local folder.
+      // Read from a file just hanging out in the local folder.
       // this might happen when the video library is used with some
       // other application, or the person enters a full path name
       if (playbin == null) {
@@ -667,7 +549,12 @@ public class Movie extends PImage implements PConstants {
       parent.die("Could not load movie file " + filename, null);
     }
 
-    // we've got a valid movie! let's rock.
+    initSink();
+    
+    playbin.setVideoSink(rgbSink);
+    makeBusConnections(playbin.getBus());    
+    
+    // We've got a valid movie! let's rock.
     try {
       this.filename = filename; // for error messages
 
@@ -677,12 +564,12 @@ public class Movie extends PImage implements PConstants {
 
       setEventHandlerObject(parent);
 
-      nativeFrameRate = -1;
+      sourceWidth = sourceHeight = 0;
+      sourceFrameRate = -1;
       frameRate = -1;
       rate = 1.0f;
       volume = -1;
-      sinkReady = false;
-      bufWidth = bufHeight = 0;
+      ready = false;      
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -691,7 +578,7 @@ public class Movie extends PImage implements PConstants {
 
   /**
    * Uses a generic object as handler of the movie. This object should have a
-   * movieEvent method that receives a GSMovie argument. This method will
+   * movieEvent method that receives a Movie argument. This method will
    * be called upon a new frame read event.
    *
    */
@@ -716,28 +603,30 @@ public class Movie extends PImage implements PConstants {
   }
 
 
-  protected void initSink() {
-    rgbSink = new AppSink("sink");    
-    useBufferSink = Video.useGLBufferSink && parent.g.isGL();
-    
+  protected void initSink() {        
+    rgbSink = new AppSink("movie sink");
     rgbSink.set("emit-signals", true);
     newSampleListener = new NewSampleListener();
     newPrerollListener = new NewPrerollListener();
     rgbSink.connect(newSampleListener);
     rgbSink.connect(newPrerollListener);
+
+    useBufferSink = Video.useGLBufferSink && parent.g.isGL();
     if (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN) {
       if (useBufferSink) rgbSink.setCaps(Caps.fromString("video/x-raw, format=RGBx"));
       else rgbSink.setCaps(Caps.fromString("video/x-raw, format=BGRx"));
     } else {
       rgbSink.setCaps(Caps.fromString("video/x-raw, format=xRGB"));
     }
-    playbin.setVideoSink(rgbSink);
-
-    makeBusConnections(playbin.getBus());
-    playbin.setState(org.freedesktop.gstreamer.State.READY);
-    
-    sinkReady = true;
-    newFrame = false;
+  }
+  
+  
+  protected void setReady() {
+    if (!ready) {
+      playbin.setState(org.freedesktop.gstreamer.State.READY); 
+      newFrame = false;
+      ready = true;
+    }
   }
 
   
@@ -768,15 +657,32 @@ public class Movie extends PImage implements PConstants {
       }
     });
   }
-  
 
+
+  
   ////////////////////////////////////////////////////////////
 
   // Stream event handling.
 
 
+  private void seek(double rate, long start, long stop) {
+    Gst.invokeLater(new Runnable() {
+      public void run() {
+        boolean res;
+        if (stop == -1) {
+          res = playbin.seek(rate, Format.TIME, EnumSet.of(SeekFlags.FLUSH, SeekFlags.ACCURATE), SeekType.SET, start, SeekType.NONE, stop);
+        } else {
+          res = playbin.seek(rate, Format.TIME, EnumSet.of(SeekFlags.FLUSH, SeekFlags.ACCURATE), SeekType.SET, start, SeekType.SET, stop);  
+        }
+        if (!res) {
+          PGraphics.showWarning("Seek operation failed.");
+        }
+      }
+    });    
+  }
+  
+  
   private void fireMovieEvent() {
-    // Creates a movieEvent.
     if (movieEventMethod != null) {
       try {
         movieEventMethod.invoke(eventHandler, this);
@@ -786,61 +692,8 @@ public class Movie extends PImage implements PConstants {
         movieEventMethod = null;
       }
     }
-  }
+  }  
   
-
-  ////////////////////////////////////////////////////////////
-
-  // Stream query methods.
-
-
-  /**
-   * Get the height of the source video. Note: calling this method repeatedly
-   * can slow down playback performance.
-   *
-   * @return int
-   */
-  protected int getSourceHeight() {
-//    Dimension dim = playbin.getVideoSize();
-//    if (dim != null) {
-//      return dim.height;
-//    } else {
-//      return 0;
-//    }
-    return nativeWidth;
-  }
-
-
-  /**
-   * Get the original framerate of the source video. Note: calling this method
-   * repeatedly can slow down playback performance.
-   *
-   * @return float
-   */
-  protected float getSourceFrameRate() {
-    // This doesn't work any longer with GStreamer 1.x
-    //return (float)playbin.getVideoSinkFrameRate();
-    // so use the field extracted from the caps instead:
-    return nativeFrameRate;
-  }
-
-
-  /**
-   * Get the width of the source video. Note: calling this method repeatedly
-   * can slow down playback performance.
-   *
-   * @return int
-   */
-  protected int getSourceWidth() {
-//    Dimension dim = playbin.getVideoSize();
-//    if (dim != null) {
-//      return dim.width;
-//    } else {
-//      return 0;
-//    }
-    return nativeHeight;
-  }
-
 
   ////////////////////////////////////////////////////////////
 
@@ -924,23 +777,28 @@ public class Movie extends PImage implements PConstants {
   }
   
   
+  ////////////////////////////////////////////////////////////
+
+  // Listener of GStreamer events.
+  
+  
   private class NewSampleListener implements AppSink.NEW_SAMPLE {
 
     @Override
     public FlowReturn newSample(AppSink sink) {
       Sample sample = sink.pullSample();
 
-      // pull out metadata from caps
+      // Pull out metadata from caps
       Structure capsStruct = sample.getCaps().getStructure(0);
-      nativeWidth = capsStruct.getInteger("width");
-      nativeHeight = capsStruct.getInteger("height");
+      sourceWidth = capsStruct.getInteger("width");
+      sourceHeight = capsStruct.getInteger("height");
       Fraction fps = capsStruct.getFraction("framerate");
-      nativeFrameRate = (float)fps.numerator / fps.denominator;
+      sourceFrameRate = (float)fps.numerator / fps.denominator;
 
-      // set the playback rate to the file's native framerate
+      // Set the playback rate to the file's native framerate
       // unless the user has already set a custom one
       if (frameRate == -1.0) {
-        frameRate = nativeFrameRate;
+        frameRate = sourceFrameRate;
       }
 
       Buffer buffer = sample.getBuffer();
@@ -952,14 +810,11 @@ public class Movie extends PImage implements PConstants {
           return FlowReturn.OK;
         }
         
-        available = true;
-        bufWidth = nativeWidth;
-        bufHeight = nativeHeight;        
-        
-        if (useBufferSink && bufferSink != null) { // The native buffer from gstreamer is copied to the buffer sink.
+        available = true;        
+        if (useBufferSink && bufferSink != null) { // The native buffer from GStreamer is copied to the buffer sink.
                     
           try {
-            sinkCopyMethod.invoke(bufferSink, new Object[] { buffer, bb, bufWidth, bufHeight });
+            sinkCopyMethod.invoke(bufferSink, new Object[] { buffer, bb, sourceWidth, sourceHeight });
             if (playing) {
               fireMovieEvent();
             }             
@@ -969,12 +824,11 @@ public class Movie extends PImage implements PConstants {
             bufferLock.unlock();
           }        
           
-        } else {
-          
+        } else {          
           IntBuffer rgb = bb.asIntBuffer();
 
           if (copyPixels == null) {
-            copyPixels = new int[nativeWidth * nativeHeight];
+            copyPixels = new int[sourceWidth * sourceHeight];
           }
           
           try {
@@ -1001,55 +855,21 @@ public class Movie extends PImage implements PConstants {
     public FlowReturn newPreroll(AppSink sink) {
       Sample sample = sink.pullPreroll();
 
-      // pull out metadata from caps
+      // Pull out metadata from caps
       Structure capsStruct = sample.getCaps().getStructure(0);
-      nativeWidth = capsStruct.getInteger("width");
-      nativeHeight = capsStruct.getInteger("height");
+      sourceWidth = capsStruct.getInteger("width");
+      sourceHeight = capsStruct.getInteger("height");
       Fraction fps = capsStruct.getFraction("framerate");
-      nativeFrameRate = (float)fps.numerator / fps.denominator;
+      sourceFrameRate = (float)fps.numerator / fps.denominator;
 
-      // set the playback rate to the file's native framerate
+      // Set the playback rate to the file's native framerate
       // unless the user has already set a custom one
       if (frameRate == -1.0) {
-        frameRate = nativeFrameRate;
+        frameRate = sourceFrameRate;
       }
 
-      /*
-      Buffer buffer = sample.getBuffer();
-      ByteBuffer bb = buffer.map(false);
-      if (bb != null) {
-        // If the EDT is still copying data from the buffer, just drop this frame
-        if (!bufferLock.tryLock()) {
-          return FlowReturn.OK;
-        }
-        IntBuffer rgb = bb.asIntBuffer();
-        
-        available = true;
-        bufWidth = nativeWidth;
-        bufHeight = nativeHeight;
-        if (copyPixels == null) {
-          copyPixels = new int[nativeWidth * nativeHeight];
-        }
-        
-        try {
-          rgb.get(copyPixels, 0, width * height);
-          if (playing) {
-            fireMovieEvent();
-          }          
-          
-        } finally {
-          bufferLock.unlock();
-        }        
-
-        
-        
-        buffer.unmap();
-      }
-      */
-      
       sample.dispose();
       return FlowReturn.OK;
     }
-  }
-  
+  } 
 }

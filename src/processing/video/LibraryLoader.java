@@ -5,6 +5,8 @@
 
   Copyright (c) 2012-19 The Processing Foundation
   Copyright (c) 2011-12 Ben Fry and Casey Reas
+  GStreamer implementation ported from GSVideo library by Andres Colubri
+  Library loader based on code by Tal Shalif
 
   This library is free software; you can redistribute it and/or
   modify it under the terms of the GNU Lesser General Public
@@ -30,12 +32,10 @@ import java.util.Map;
 import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.Platform;
- 
+
 /**
  * This class loads the gstreamer native libraries.
- * By Andres Colubri
- * Based on code by Tal Shalif
- * 
+ *
  */
 public class LibraryLoader {
 
@@ -43,17 +43,14 @@ public class LibraryLoader {
   }
 
   private static LibraryLoader instance;
-   
+
   static final Object[][] WINDOWS_DEPENDENCIES = {
-      // Core gstreamer libraries  
+      // Core gstreamer libraries
       { "libgstadaptivedemux-1.0-0", new String[] {}, false },
       { "libgstallocators-1.0-0", new String[] {}, false },
       { "libgstapp-1.0-0", new String[] {}, false },
       { "libgstaudio-1.0-0", new String[] {}, false },
-      //{ "libgstbadallocators-1.0-0", new String[] {}, false },
       { "libgstbadaudio-1.0-0", new String[] {}, false },
-      //{ "libgstbadbase-1.0-0", new String[] {}, false },
-      //{ "libgstbadvideo-1.0-0", new String[] {}, false },
       { "libgstbase-1.0-0", new String[] {}, false },
       { "libgstbasecamerabinsrc-1.0-0", new String[] {}, false },
       { "libgstcheck-1.0-0", new String[] {}, false },
@@ -77,26 +74,18 @@ public class LibraryLoader {
       { "libgstsdp-1.0-0", new String[] {}, false },
       { "libgsttag-1.0-0", new String[] {}, false },
       { "libgsturidownloader-1.0-0", new String[] {}, false },
-      { "libgstvalidate-1.0-0", new String[] {}, false },
       { "libgstvideo-1.0-0", new String[] {}, false },
       { "libgstwebrtc-1.0-0", new String[] {}, false },
 
       // External libraries
-      { "liba52-0", new String[] {}, false },
-      { "libass-9", new String[] {}, false },
       { "libbz2", new String[] {}, false },
       { "libcairo-2", new String[] {}, false },
       { "libcairo-gobject-2", new String[] {}, false },
       { "libcairo-script-interpreter-2", new String[] {}, false },
-      //{ "libcharset-1", new String[] {}, false },
       { "libcroco-0.6-3", new String[] {}, false },
       { "libcrypto-1_1-x64", new String[] {}, false },
-      { "libdca-0", new String[] {}, false },
       { "libdv-4", new String[] {}, false },
-      { "libdvdnav-4", new String[] {}, false },
-      { "libdvdread-4", new String[] {}, false },
       { "libexpat-1", new String[] {}, false },
-      //{ "libfaad-2", new String[] {}, false },
       { "libffi-7", new String[] {}, false },
       { "libFLAC-8", new String[] {}, false },
       { "libfontconfig-1", new String[] {}, false },
@@ -104,7 +93,6 @@ public class LibraryLoader {
       { "libfribidi-0", new String[] {}, false },
       { "libgcc_s_sjlj-1", new String[] {}, false },
       { "libgdk_pixbuf-2.0-0", new String[] {}, false },
-      { "libges-1.0-0", new String[] {}, false },
       { "libgio-2.0-0", new String[] {}, false },
       { "libglib-2.0-0", new String[] {}, false },
       { "libgmodule-2.0-0", new String[] {}, false },
@@ -117,22 +105,16 @@ public class LibraryLoader {
       { "libgthread-2.0-0", new String[] {}, false },
       { "libharfbuzz-0", new String[] {}, false },
       { "libhogweed-4", new String[] {}, false },
-      //{ "libiconv-2", new String[] {}, false },
       { "libintl-8", new String[] {}, false },
       { "libjpeg-8", new String[] {}, false },
       { "libjson-glib-1.0-0", new String[] {}, false },
       { "libkate-1", new String[] {}, false },
-      { "libmms-0", new String[] {}, false },
       { "libmp3lame-0", new String[] {}, false },
-      //{ "libmpeg2-0", new String[] {}, false },
-      //{ "libmpeg2convert-0", new String[] {}, false },
       { "libmpg123-0", new String[] {}, false },
       { "libnettle-6", new String[] {}, false },
       { "libnice-10", new String[] {}, false },
       { "libogg-0", new String[] {}, false },
       { "liboggkate-1", new String[] {}, false },
-      { "libopencore-amrnb-0", new String[] {}, false },
-      { "libopencore-amrwb-0", new String[] {}, false },
       { "libopenh264", new String[] {}, false },
       { "libopenjp2", new String[] {}, false },
       { "libopus-0", new String[] {}, false },
@@ -145,9 +127,7 @@ public class LibraryLoader {
       { "libpixman-1-0", new String[] {}, false },
       { "libpng16-16", new String[] {}, false },
       { "librsvg-2-2", new String[] {}, false },
-      { "librtmp-1", new String[] {}, false },
       { "libsbc-1", new String[] {}, false },
-      { "libSoundTouch-1", new String[] {}, false },
       { "libsoup-2.4-1", new String[] {}, false },
       { "libspandsp-2", new String[] {}, false },
       { "libspeex-1", new String[] {}, false },
@@ -163,15 +143,11 @@ public class LibraryLoader {
       { "libtiff-5", new String[] {}, false },
       { "libturbojpeg-0", new String[] {}, false },
       { "libusrsctp-1", new String[] {}, false },
-      { "libvisual-0.4-0", new String[] {}, false },
-      { "libvo-aacenc-0", new String[] {}, false },
       { "libvorbis-0", new String[] {}, false },
       { "libvorbisenc-2", new String[] {}, false },
       { "libvorbisfile-3", new String[] {}, false },
       { "libwavpack-1", new String[] {}, false },
-      { "libwebrtc_audio_processing-0", new String[] {}, false },
       { "libwinpthread-1", new String[] {}, false },
-      { "libx264-148", new String[] {}, false },
       { "libxml2-2", new String[] {}, false },
       { "libz-1", new String[] {}, false },
       { "avcodec-58", new String[] {}, false },
@@ -180,7 +156,7 @@ public class LibraryLoader {
       { "avutil-56", new String[] {}, false },
       { "swresample-3", new String[] {}, false }
     };
-  
+
   static final Object[][] MACOSX_DEPENDENCIES = {
       { "gstbase-1.0", new String[] { "gstreamer-1.0" }, true },
       { "gstinterfaces-1.0", new String[] { "gstreamer-1.0" }, true },
@@ -196,31 +172,31 @@ public class LibraryLoader {
       { "gstaudio-1.0", new String[] { "gstbase-1.0" }, true },
       { "gstvideo-1.0", new String[] { "gstbase-1.0" }, true }, };
 
-  
-  static final Object[][] dependencies = 
-    Platform.isWindows() ? WINDOWS_DEPENDENCIES : 
+
+  static final Object[][] dependencies =
+    Platform.isWindows() ? WINDOWS_DEPENDENCIES :
       Platform.isMac() ? MACOSX_DEPENDENCIES : DEFAULT_DEPENDENCIES;
 
-  
-  private static final Map<String, Object> loadedMap = 
-    new HashMap<String, Object>();
 
-  
+  private static final Map<String, Object> loadedMap =
+    new HashMap<>();
+
+
   private static final int RECURSIVE_LOAD_MAX_DEPTH = 5;
-  
-  
+
+
   private LibraryLoader() {
   }
 
-  
+
   private void preLoadLibs() {
     for (Object[] a : dependencies) {
       load(a[0].toString(), DummyLibrary.class, true, 0, (Boolean) a[2]);
     }
   }
 
-  
-  private String[] findDeps(String name) {
+
+  static private String[] findDeps(String name) {
 
     for (Object[] a : dependencies) {
       if (name.equals(a[0])) {
@@ -229,16 +205,16 @@ public class LibraryLoader {
       }
     }
 
-    return new String[] {}; // library dependancy load chain unspecified -
-                            // probably client call
+    // library dependency load chain unspecified - probably client call
+    return new String[] { };
   }
 
-  
+
   public Object load(String name, Class<?> clazz, boolean reqLib) {
     return load(name, clazz, true, 0, reqLib);
   }
 
-  
+
   private Object load(String name, Class<?> clazz, boolean forceReload,
       int depth, boolean reqLib) {
 
@@ -276,8 +252,8 @@ public class LibraryLoader {
     return library;
   }
 
-  
-  private static Object loadLibrary(String name, Class<?> clazz, 
+
+  private static Object loadLibrary(String name, Class<?> clazz,
     boolean reqLib) {
 
     // Logger.getAnonymousLogger().info(String.format("loading %s", name));
@@ -293,7 +269,7 @@ public class LibraryLoader {
         String s = String.format(fmt, name);
         //System.out.println("Trying to load library file " + s);
         Object obj = Native.loadLibrary(s, clazz);
-        //System.out.println("Loaded library " + s + " succesfully!");
+        //System.out.println("Loaded library " + s + " successfully!");
         return obj;
       } catch (UnsatisfiedLinkError ex) {
         linkError = ex;
@@ -303,19 +279,19 @@ public class LibraryLoader {
     if (reqLib)
       throw new UnsatisfiedLinkError(
         String.format(
-          "can't load library %s (%1$s|lib%1$s|lib%1$s-0) with " + 
+          "can't load library %s (%1$s|lib%1$s|lib%1$s-0) with " +
           "-Djna.library.path=%s. Last error:%s",
           name, System.getProperty("jna.library.path"), linkError));
     else {
       System.out.println(String.format(
-        "can't load library %s (%1$s|lib%1$s|lib%1$s-0) with " + 
+        "can't load library %s (%1$s|lib%1$s|lib%1$s-0) with " +
         "-Djna.library.path=%s. Last error:%s",
         name, System.getProperty("jna.library.path"), linkError));
       return null;
     }
   }
 
-  
+
   public static synchronized LibraryLoader getInstance() {
     if (null == instance) {
       instance = new LibraryLoader();
